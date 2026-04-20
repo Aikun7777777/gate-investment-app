@@ -6,6 +6,7 @@ import Portfolio from './components/Portfolio';
 import FundingArbitrage from './components/FundingArbitrage';
 import EnhancedRecommendations from './components/EnhancedRecommendations';
 import PriceAlerts from './components/PriceAlerts';
+import PerformanceMonitor from './components/PerformanceMonitor';
 import Settings from './components/Settings';
 
 function App() {
@@ -20,6 +21,7 @@ function App() {
     { id: 'trading', name: '交易', icon: '💹' },
     { id: 'portfolio', name: '资产', icon: '💰' },
     { id: 'funding', name: '资金费率', icon: '🔄' },
+    { id: 'performance', name: '性能监控', icon: '⚡' },
     { id: 'settings', name: '设置', icon: '⚙️' }
   ];
 
@@ -75,6 +77,7 @@ function App() {
         {activeTab === 'trading' && <Trading pair={selectedPair} />}
         {activeTab === 'portfolio' && <Portfolio />}
         {activeTab === 'funding' && <FundingArbitrage />}
+        {activeTab === 'performance' && <PerformanceMonitor />}
         {activeTab === 'settings' && <Settings />}
       </main>
     </div>

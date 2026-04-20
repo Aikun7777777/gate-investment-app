@@ -16,6 +16,8 @@ from gate_trader import GateTrader, format_price
 from advanced_analyzer import AdvancedInvestmentAnalyzer
 from price_alert import PriceAlertSystem
 from price_monitor import PriceMonitor
+from cache_manager import cache
+from error_handler import handle_errors, log_request, performance_monitor, logger
 
 app = Flask(__name__)
 CORS(app)
@@ -53,12 +55,35 @@ alert_system = PriceAlertSystem()
 price_monitor = PriceMonitor(trader, alert_system, check_interval=30)
 price_monitor.start()
 
+# 请求前后钩子 - 性能监控
+@app.before_request
+def before_request():
+    from flask import g
+    g.start_time = datetime.now()
+
+@app.after_request
+def after_request(response):
+    from flask import g, request
+    if hasattr(g, 'start_time'):
+        duration = (datetime.now() - g.start_time).total_seconds()
+        success = response.status_code < 400
+        performance_monitor.record_request(request.path, duration, success)
+    return response
+
 @app.route('/api/price/<pair>', methods=['GET'])
+@handle_errors
+@log_request
 def get_price(pair):
+    # 尝试从缓存获取（5秒缓存）
+    cache_key = f'price:{pair}'
+    cached_data = cache.get(cache_key, max_age=5)
+    if cached_data:
+        return jsonify(cached_data)
+
     result = trader.get_ticker(pair)
     if result and 'error' not in result and len(result) > 0:
         ticker = result[0]
-        return jsonify({
+        response_data = {
             'success': True,
             'pair': pair,
             'last': float(ticker.get('last', 0)),
@@ -68,10 +93,14 @@ def get_price(pair):
             'high_24h': float(ticker.get('highest_24h', 0)),
             'low_24h': float(ticker.get('lowest_24h', 0)),
             'volume_24h': float(ticker.get('base_volume', 0))
-        })
+        }
+        cache.set(cache_key, response_data)
+        return jsonify(response_data)
     return jsonify({'success': False, 'error': 'Failed to fetch price'})
 
 @app.route('/api/account', methods=['GET'])
+@handle_errors
+@log_request
 def get_account():
     result = trader.get_spot_account()
     if result and 'error' not in result:
@@ -89,6 +118,8 @@ def get_account():
     return jsonify({'success': False, 'error': 'Failed to fetch account'})
 
 @app.route('/api/order', methods=['POST'])
+@handle_errors
+@log_request
 def place_order():
     data = request.json
     pair = data.get('pair')
@@ -103,15 +134,26 @@ def place_order():
     return jsonify({'success': False, 'error': result.get('error', 'Failed to place order')})
 
 @app.route('/api/orderbook/<pair>', methods=['GET'])
+@handle_errors
+@log_request
 def get_orderbook(pair):
     limit = request.args.get('limit', 10, type=int)
+
+    # 尝试从缓存获取（3秒缓存）
+    cache_key = f'orderbook:{pair}:{limit}'
+    cached_data = cache.get(cache_key, max_age=3)
+    if cached_data:
+        return jsonify(cached_data)
+
     result = trader.get_order_book(pair, limit)
     if result and 'error' not in result:
-        return jsonify({
+        response_data = {
             'success': True,
             'bids': [[float(b[0]), float(b[1])] for b in result.get('bids', [])],
             'asks': [[float(a[0]), float(a[1])] for a in result.get('asks', [])]
-        })
+        }
+        cache.set(cache_key, response_data)
+        return jsonify(response_data)
     return jsonify({'success': False, 'error': 'Failed to fetch orderbook'})
 
 @app.route('/api/funding-rates', methods=['GET'])
@@ -167,9 +209,17 @@ def get_config():
     })
 
 @app.route('/api/recommendations', methods=['GET'])
+@handle_errors
+@log_request
 def get_recommendations():
     """获取投资推荐"""
     try:
+        # 尝试从缓存获取（60秒缓存）
+        cache_key = 'recommendations'
+        cached_data = cache.get(cache_key, max_age=60)
+        if cached_data:
+            return jsonify(cached_data)
+
         # 获取监控列表
         watched_pairs = config.get('trading', {}).get('watched_pairs', [
             'BTC_USDT', 'ETH_USDT', 'SOL_USDT'
@@ -178,11 +228,13 @@ def get_recommendations():
         # 分析所有投资品
         results = analyzer.analyze_all_products(watched_pairs)
 
-        return jsonify({
+        response_data = {
             'success': True,
             'recommendations': results,
             'timestamp': datetime.now().isoformat()
-        })
+        }
+        cache.set(cache_key, response_data)
+        return jsonify(response_data)
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -240,6 +292,33 @@ def get_monitor_status():
     return jsonify({
         'success': True,
         'status': status
+    })
+
+@app.route('/api/cache/stats', methods=['GET'])
+def get_cache_stats():
+    """获取缓存统计信息"""
+    stats = cache.get_stats()
+    return jsonify({
+        'success': True,
+        'stats': stats
+    })
+
+@app.route('/api/cache/clear', methods=['POST'])
+def clear_cache():
+    """清空缓存"""
+    cache.clear()
+    return jsonify({
+        'success': True,
+        'message': 'Cache cleared'
+    })
+
+@app.route('/api/metrics', methods=['GET'])
+def get_metrics():
+    """获取性能指标"""
+    metrics = performance_monitor.get_metrics()
+    return jsonify({
+        'success': True,
+        'metrics': metrics
     })
 
 @app.route('/health', methods=['GET'])

@@ -1,9 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
+import { cache } from '../utils/cache';
 
 export function useGateAPI() {
   const getPrice = useCallback(async (pair) => {
     try {
+      // 尝试从缓存获取（5秒缓存）
+      const cacheKey = `price:${pair}`;
+      const cached = cache.get(cacheKey, 5000);
+      if (cached) return cached;
+
       const result = await window.electron.invoke('gate:getPrice', pair);
+      if (result.success) {
+        cache.set(cacheKey, result);
+      }
       return result;
     } catch (error) {
       return { success: false, error: error.message };
@@ -12,7 +21,15 @@ export function useGateAPI() {
 
   const getAccount = useCallback(async () => {
     try {
+      // 尝试从缓存获取（10秒缓存）
+      const cacheKey = 'account';
+      const cached = cache.get(cacheKey, 10000);
+      if (cached) return cached;
+
       const result = await window.electron.invoke('gate:getAccount');
+      if (result.success) {
+        cache.set(cacheKey, result);
+      }
       return result;
     } catch (error) {
       return { success: false, error: error.message };
