@@ -14,6 +14,8 @@ from datetime import datetime
 sys.path.append(os.path.dirname(__file__))
 from gate_trader import GateTrader, format_price
 from advanced_analyzer import AdvancedInvestmentAnalyzer
+from price_alert import PriceAlertSystem
+from price_monitor import PriceMonitor
 
 app = Flask(__name__)
 CORS(app)
@@ -45,6 +47,11 @@ trader = GateTrader(
     testnet=False  # 使用主网获取市场数据
 )
 analyzer = AdvancedInvestmentAnalyzer(trader)
+alert_system = PriceAlertSystem()
+
+# 启动价格监控（每30秒检查一次）
+price_monitor = PriceMonitor(trader, alert_system, check_interval=30)
+price_monitor.start()
 
 @app.route('/api/price/<pair>', methods=['GET'])
 def get_price(pair):
@@ -178,6 +185,62 @@ def get_recommendations():
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/alerts', methods=['GET'])
+def get_alerts():
+    """获取价格预警列表"""
+    pair = request.args.get('pair')
+    active = alert_system.get_active_alerts(pair)
+    triggered = alert_system.get_triggered_alerts(pair)
+    return jsonify({
+        'success': True,
+        'active': active,
+        'triggered': triggered
+    })
+
+@app.route('/api/alerts', methods=['POST'])
+def add_alert():
+    """添加价格预警"""
+    data = request.json
+    pair = data.get('pair')
+    price = float(data.get('price'))
+    condition = data.get('condition', 'above')
+    message = data.get('message', '')
+
+    alert_id = alert_system.add_alert(pair, price, condition, message)
+    return jsonify({
+        'success': True,
+        'alert_id': alert_id
+    })
+
+@app.route('/api/alerts/<alert_id>', methods=['DELETE'])
+def delete_alert(alert_id):
+    """删除价格预警"""
+    success = alert_system.remove_alert(alert_id)
+    return jsonify({'success': success})
+
+@app.route('/api/price/<pair>/check-alerts', methods=['GET'])
+def check_price_alerts(pair):
+    """检查价格预警并返回触发的预警"""
+    result = trader.get_ticker(pair)
+    if result and 'error' not in result and len(result) > 0:
+        current_price = float(result[0].get('last', 0))
+        triggered = alert_system.check_alerts(pair, current_price)
+        return jsonify({
+            'success': True,
+            'current_price': current_price,
+            'triggered_alerts': triggered
+        })
+    return jsonify({'success': False, 'error': 'Failed to fetch price'})
+
+@app.route('/api/monitor/status', methods=['GET'])
+def get_monitor_status():
+    """获取价格监控状态"""
+    status = price_monitor.get_status()
+    return jsonify({
+        'success': True,
+        'status': status
+    })
 
 @app.route('/health', methods=['GET'])
 def health():

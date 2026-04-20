@@ -55,12 +55,52 @@ export function useGateAPI() {
     }
   }, []);
 
+  const getAlerts = useCallback(async (pair = null) => {
+    try {
+      const result = await window.electron.invoke('gate:getAlerts', pair);
+      return result;
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }, []);
+
+  const addAlert = useCallback(async (alertData) => {
+    try {
+      const result = await window.electron.invoke('gate:addAlert', alertData);
+      return result;
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }, []);
+
+  const deleteAlert = useCallback(async (alertId) => {
+    try {
+      const result = await window.electron.invoke('gate:deleteAlert', alertId);
+      return result;
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }, []);
+
+  const checkPriceAlerts = useCallback(async (pair) => {
+    try {
+      const result = await window.electron.invoke('gate:checkPriceAlerts', pair);
+      return result;
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }, []);
+
   return {
     getPrice,
     getAccount,
     placeOrder,
     getOrderBook,
     getFundingRates,
-    getConfig
+    getConfig,
+    getAlerts,
+    addAlert,
+    deleteAlert,
+    checkPriceAlerts
   };
 }

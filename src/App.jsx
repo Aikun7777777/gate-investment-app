@@ -5,6 +5,7 @@ import Trading from './components/Trading';
 import Portfolio from './components/Portfolio';
 import FundingArbitrage from './components/FundingArbitrage';
 import Recommendations from './components/Recommendations';
+import PriceAlerts from './components/PriceAlerts';
 import Settings from './components/Settings';
 
 function App() {
@@ -13,6 +14,7 @@ function App() {
 
   const tabs = [
     { id: 'recommendations', name: '投资建议', icon: '💡' },
+    { id: 'alerts', name: '价格预警', icon: '🔔' },
     { id: 'dashboard', name: '仪表板', icon: '📊' },
     { id: 'market', name: '行情监控', icon: '📈' },
     { id: 'trading', name: '交易', icon: '💹' },
@@ -59,6 +61,7 @@ function App() {
 
       <main className="p-6">
         {activeTab === 'recommendations' && <Recommendations />}
+        {activeTab === 'alerts' && <PriceAlerts />}
         {activeTab === 'dashboard' && <Dashboard onPairSelect={handlePairSelect} />}
         {activeTab === 'market' && <MarketWatch onPairSelect={handlePairSelect} />}
         {activeTab === 'trading' && <Trading pair={selectedPair} />}

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, Notification } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 
@@ -140,6 +140,79 @@ ipcMain.handle('gate:getRecommendations', async () => {
   try {
     const response = await fetch(`http://localhost:${PYTHON_SERVER_PORT}/api/recommendations`);
     return await response.json();
+  } catch (error) {
+    return { error: error.message };
+  }
+});
+
+ipcMain.handle('gate:getAlerts', async (event, pair) => {
+  try {
+    const url = pair
+      ? `http://localhost:${PYTHON_SERVER_PORT}/api/alerts?pair=${pair}`
+      : `http://localhost:${PYTHON_SERVER_PORT}/api/alerts`;
+    const response = await fetch(url);
+    return await response.json();
+  } catch (error) {
+    return { error: error.message };
+  }
+});
+
+ipcMain.handle('gate:addAlert', async (event, alertData) => {
+  try {
+    const response = await fetch(`http://localhost:${PYTHON_SERVER_PORT}/api/alerts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(alertData)
+    });
+    return await response.json();
+  } catch (error) {
+    return { error: error.message };
+  }
+});
+
+ipcMain.handle('gate:deleteAlert', async (event, alertId) => {
+  try {
+    const response = await fetch(`http://localhost:${PYTHON_SERVER_PORT}/api/alerts/${alertId}`, {
+      method: 'DELETE'
+    });
+    return await response.json();
+  } catch (error) {
+    return { error: error.message };
+  }
+});
+
+ipcMain.handle('gate:checkPriceAlerts', async (event, pair) => {
+  try {
+    const response = await fetch(`http://localhost:${PYTHON_SERVER_PORT}/api/price/${pair}/check-alerts`);
+    const result = await response.json();
+
+    // 如果有触发的预警，显示桌面通知
+    if (result.success && result.triggered_alerts && result.triggered_alerts.length > 0) {
+      result.triggered_alerts.forEach(alert => {
+        const notification = new Notification({
+          title: '🔔 价格预警触发',
+          body: `${alert.pair} 已${alert.condition === 'above' ? '突破' : '跌破'} $${alert.target_price}\n当前价格: $${result.current_price}`,
+          silent: false
+        });
+        notification.show();
+      });
+    }
+
+    return result;
+  } catch (error) {
+    return { error: error.message };
+  }
+});
+
+ipcMain.handle('show-notification', async (event, { title, body }) => {
+  try {
+    const notification = new Notification({
+      title,
+      body,
+      silent: false
+    });
+    notification.show();
+    return { success: true };
   } catch (error) {
     return { error: error.message };
   }
