@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import Dashboard from './components/Dashboard';
+import EnhancedDashboard from './components/EnhancedDashboard';
 import MarketWatch from './components/MarketWatch';
 import Trading from './components/Trading';
 import Portfolio from './components/Portfolio';
 import FundingArbitrage from './components/FundingArbitrage';
-import Recommendations from './components/Recommendations';
+import EnhancedRecommendations from './components/EnhancedRecommendations';
 import PriceAlerts from './components/PriceAlerts';
 import Settings from './components/Settings';
 
@@ -29,27 +29,35 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-primary text-white">
-      <header className="bg-secondary border-b border-gray-700 px-6 py-4">
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white border-b border-gray-200 px-6 py-4 shadow-sm">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Gate 投资助手</h1>
-          <div className="flex items-center space-x-2">
-            <span className="text-sm text-gray-400">测试网模式</span>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
+              <span className="text-white text-xl font-bold">G</span>
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-800">Gate 投资助手</h1>
+              <p className="text-xs text-gray-500">智能投资决策平台</p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-3">
+            <span className="text-sm text-gray-600">主网模式</span>
             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
           </div>
         </div>
       </header>
 
-      <nav className="bg-secondary border-b border-gray-700">
+      <nav className="bg-white border-b border-gray-200 shadow-sm">
         <div className="flex space-x-1 px-6">
           {tabs.map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`px-4 py-3 text-sm font-medium transition-colors ${
+              className={`px-4 py-3 text-sm font-medium transition-all ${
                 activeTab === tab.id
-                  ? 'text-white border-b-2 border-blue-500'
-                  : 'text-gray-400 hover:text-white'
+                  ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
               }`}
             >
               <span className="mr-2">{tab.icon}</span>
@@ -60,9 +68,9 @@ function App() {
       </nav>
 
       <main className="p-6">
-        {activeTab === 'recommendations' && <Recommendations />}
+        {activeTab === 'recommendations' && <EnhancedRecommendations />}
         {activeTab === 'alerts' && <PriceAlerts />}
-        {activeTab === 'dashboard' && <Dashboard onPairSelect={handlePairSelect} />}
+        {activeTab === 'dashboard' && <EnhancedDashboard onPairSelect={handlePairSelect} />}
         {activeTab === 'market' && <MarketWatch onPairSelect={handlePairSelect} />}
         {activeTab === 'trading' && <Trading pair={selectedPair} />}
         {activeTab === 'portfolio' && <Portfolio />}
