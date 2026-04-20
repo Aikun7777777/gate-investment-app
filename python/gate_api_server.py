@@ -1,0 +1,188 @@
+#!/usr/bin/env python3
+"""
+Gate.io API Flask Server
+提供 REST API 接口供 Electron 应用调用
+"""
+
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+import json
+import os
+import sys
+from datetime import datetime
+
+sys.path.append(os.path.dirname(__file__))
+from gate_trader import GateTrader, format_price
+from advanced_analyzer import AdvancedInvestmentAnalyzer
+
+app = Flask(__name__)
+CORS(app)
+
+CONFIG_FILE = os.path.expanduser("~/.openclaw/gate-config.json")
+
+def load_config():
+    try:
+        with open(CONFIG_FILE, 'r') as f:
+            return json.load(f)
+    except:
+        return {
+            "gate": {
+                "testnet": True,
+                "testnet_api_key": "",
+                "testnet_api_secret": ""
+            }
+        }
+
+config = load_config()
+gate_config = config.get('gate', {})
+
+# 对于市场数据，使用主网（不需要认证）
+# 对于交易操作，使用配置的 testnet 设置
+use_testnet = gate_config.get('testnet', True)
+trader = GateTrader(
+    api_key=gate_config.get('api_key' if not use_testnet else 'testnet_api_key', ''),
+    api_secret=gate_config.get('api_secret' if not use_testnet else 'testnet_api_secret', ''),
+    testnet=False  # 使用主网获取市场数据
+)
+analyzer = AdvancedInvestmentAnalyzer(trader)
+
+@app.route('/api/price/<pair>', methods=['GET'])
+def get_price(pair):
+    result = trader.get_ticker(pair)
+    if result and 'error' not in result and len(result) > 0:
+        ticker = result[0]
+        return jsonify({
+            'success': True,
+            'pair': pair,
+            'last': float(ticker.get('last', 0)),
+            'highest_bid': float(ticker.get('highest_bid', 0)),
+            'lowest_ask': float(ticker.get('lowest_ask', 0)),
+            'change_24h': ticker.get('change_24h', '0'),
+            'high_24h': float(ticker.get('highest_24h', 0)),
+            'low_24h': float(ticker.get('lowest_24h', 0)),
+            'volume_24h': float(ticker.get('base_volume', 0))
+        })
+    return jsonify({'success': False, 'error': 'Failed to fetch price'})
+
+@app.route('/api/account', methods=['GET'])
+def get_account():
+    result = trader.get_spot_account()
+    if result and 'error' not in result:
+        balances = []
+        for acc in result:
+            available = float(acc.get('available', 0))
+            locked = float(acc.get('locked', 0))
+            if available > 0 or locked > 0:
+                balances.append({
+                    'currency': acc.get('currency'),
+                    'available': available,
+                    'locked': locked
+                })
+        return jsonify({'success': True, 'balances': balances})
+    return jsonify({'success': False, 'error': 'Failed to fetch account'})
+
+@app.route('/api/order', methods=['POST'])
+def place_order():
+    data = request.json
+    pair = data.get('pair')
+    side = data.get('side')
+    order_type = data.get('type', 'limit')
+    amount = data.get('amount')
+    price = data.get('price')
+
+    result = trader.place_order(pair, side, order_type, amount, price)
+    if result and 'error' not in result:
+        return jsonify({'success': True, 'order': result})
+    return jsonify({'success': False, 'error': result.get('error', 'Failed to place order')})
+
+@app.route('/api/orderbook/<pair>', methods=['GET'])
+def get_orderbook(pair):
+    limit = request.args.get('limit', 10, type=int)
+    result = trader.get_order_book(pair, limit)
+    if result and 'error' not in result:
+        return jsonify({
+            'success': True,
+            'bids': [[float(b[0]), float(b[1])] for b in result.get('bids', [])],
+            'asks': [[float(a[0]), float(a[1])] for a in result.get('asks', [])]
+        })
+    return jsonify({'success': False, 'error': 'Failed to fetch orderbook'})
+
+@app.route('/api/funding-rates', methods=['GET'])
+def get_funding_rates():
+    import requests
+
+    testnet = gate_config.get('testnet', True)
+    host = "https://api-testnet.gateapi.io" if testnet else "https://api.gateio.ws"
+    url = f"{host}/api/v4/futures/usdt/contracts"
+
+    try:
+        r = requests.get(url, timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            rates = []
+
+            majors = ["BTC", "ETH", "SOL", "XRP", "DOGE", "ADA", "AVAX", "LINK", "DOT", "MATIC"]
+
+            for item in data:
+                name = item.get("name", "")
+                if "_USDT" not in name:
+                    continue
+
+                base = name.replace("_USDT", "")
+                if base not in majors:
+                    continue
+
+                funding_rate = float(item.get("funding_rate") or 0)
+                funding_interval = int(item.get("funding_interval", 28800))
+
+                periods_per_day = 86400 / funding_interval if funding_interval > 0 else 3
+                annual_rate = funding_rate * periods_per_day * 365 * 100
+
+                rates.append({
+                    "coin": base,
+                    "name": name,
+                    "funding_rate": funding_rate,
+                    "annual_rate": annual_rate,
+                    "last_price": float(item.get("last_price") or 0)
+                })
+
+            return jsonify({'success': True, 'rates': rates})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+    return jsonify({'success': False, 'error': 'Failed to fetch funding rates'})
+
+@app.route('/api/config', methods=['GET'])
+def get_config():
+    return jsonify({
+        'success': True,
+        'config': config
+    })
+
+@app.route('/api/recommendations', methods=['GET'])
+def get_recommendations():
+    """获取投资推荐"""
+    try:
+        # 获取监控列表
+        watched_pairs = config.get('trading', {}).get('watched_pairs', [
+            'BTC_USDT', 'ETH_USDT', 'SOL_USDT'
+        ])
+
+        # 分析所有投资品
+        results = analyzer.analyze_all_products(watched_pairs)
+
+        return jsonify({
+            'success': True,
+            'recommendations': results,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({'status': 'ok'})
+
+if __name__ == '__main__':
+    print("🚀 Gate.io API Server starting on http://localhost:5001")
+    app.run(host='0.0.0.0', port=5001, debug=False)
